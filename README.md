@@ -21,9 +21,7 @@ java api.ApiServer
 
 
 
-```bash
-http://localhost:7070
-```
+
 
 Frontend (React + Vite)
 Install dependencies
