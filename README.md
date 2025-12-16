@@ -11,36 +11,42 @@ and a React (Vite) frontend.
 ```bash
 cd backend
 javac -d . $(find . -name "*.java")
-Run
+```
+###Run
 
+```bash
 
 java api.ApiServer
-The server will start at:
+```
 
 
 
+```bash
 http://localhost:7070
+```
+
 Frontend (React + Vite)
 Install dependencies
 
-
+```bash
 cd frontend
 npm install
+```
+
 Run development server
 
 
+```bash
 npm run dev
-Open in browser:
-
-
-
+```
+ブラウザでこのURLを開いて確認
+```bash
 http://localhost:5173
+```
+
 Startup Order
 Start the backend first
 
 Then start the frontend
 
-API Check (Optional)
 
-
-curl http://localhost:7070/algorithms
