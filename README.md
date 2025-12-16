@@ -12,27 +12,27 @@ and a React (Vite) frontend.
 cd backend
 javac -d . $(find . -name "*.java")
 Run
-bash
+
 
 java api.ApiServer
 The server will start at:
 
-arduino
+
 
 http://localhost:7070
 Frontend (React + Vite)
 Install dependencies
-bash
+
 
 cd frontend
 npm install
 Run development server
-bash
+
 
 npm run dev
 Open in browser:
 
-arduino
+
 
 http://localhost:5173
 Startup Order
@@ -41,6 +41,6 @@ Start the backend first
 Then start the frontend
 
 API Check (Optional)
-bash
+
 
 curl http://localhost:7070/algorithms
