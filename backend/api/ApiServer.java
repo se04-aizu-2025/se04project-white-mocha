@@ -1,13 +1,8 @@
 package api;
 
+import algorithm.SortAlgorithm;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-
-import algorithm.SortAlgorithm;
-import visualize.AlgorithmRegistry;
-import visualize.EventCollector;
-import visualize.SortEvent;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -15,6 +10,9 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import visualize.AlgorithmRegistry;
+import visualize.EventCollector;
+import visualize.SortEvent;
 
 /**
  * Minimal HTTP API server (no external libs).
@@ -27,6 +25,9 @@ import java.util.*;
  *      Body: either JSON array like [5,1,4,2,8]  OR CSV like 5,1,4,2,8
  *      -> {"initial":[...],"sorted":[...],"steps":[...]}
  *
+ *  - GET /generate?count=N&max=n
+ *      -> [random unique integers in range 1..n]
+ *
  * CORS enabled for local React dev.
  */
 public class ApiServer {
@@ -35,9 +36,35 @@ public class ApiServer {
         int port = 7070;
 
         AlgorithmRegistry registry = new AlgorithmRegistry();
-
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
+        /* =======================
+         * Random Array Generator
+         * ======================= */
+        server.createContext("/generate", ex -> {
+            if (handleCors(ex)) return;
+
+            if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+                sendJson(ex, 405, "{\"error\":\"Method Not Allowed\"}");
+                return;
+            }
+
+            try {
+                Map<String, String> params = parseQuery(ex.getRequestURI().getRawQuery());
+                int count = Integer.parseInt(params.get("count"));
+                int max = Integer.parseInt(params.get("max"));
+
+                int[] arr = RandomArrayGenerator.generate(count, max);
+                sendJson(ex, 200, intArrayJson(arr));
+
+            } catch (Exception e) {
+                sendJson(ex, 400, "{\"error\":\"" + escape(e.getMessage()) + "\"}");
+            }
+        });
+
+        /* =======================
+         * Algorithm List
+         * ======================= */
         server.createContext("/algorithms", ex -> {
             if (handleCors(ex)) return;
 
@@ -63,6 +90,9 @@ public class ApiServer {
             sendJson(ex, 200, sb.toString());
         });
 
+        /* =======================
+         * Run Sorting Algorithm
+         * ======================= */
         server.createContext("/run", ex -> {
             if (handleCors(ex)) return;
 
@@ -85,12 +115,11 @@ public class ApiServer {
             try {
                 initial = parseArray(body);
             } catch (IllegalArgumentException e) {
-                sendJson(ex, 400, "{\"error\":\"Invalid array. Use JSON [1,2,3] or CSV 1,2,3\"}");
+                sendJson(ex, 400, "{\"error\":\"Invalid array\"}");
                 return;
             }
 
             int[] work = Arrays.copyOf(initial, initial.length);
-
             EventCollector collector = new EventCollector();
             algo.sort(work, collector);
             collector.done();
@@ -101,15 +130,37 @@ public class ApiServer {
 
         server.setExecutor(null);
         server.start();
+
         System.out.println("API server running on http://localhost:" + port);
         System.out.println("GET  /algorithms");
-        System.out.println("POST /run?algorithm=bubble   body: [5,1,4] or 5,1,4");
+        System.out.println("POST /run?algorithm=bubble");
+        System.out.println("GET  /generate?count=N&max=n");
     }
 
-    // ---- CORS / Helpers ----
+    /* =======================
+     * Random Array Generator
+     * ======================= */
+    static class RandomArrayGenerator {
+        static int[] generate(int count, int max) {
+            if (count <= 0 || max <= 0)
+                throw new IllegalArgumentException("count and max must be > 0");
+            if (count > max)
+                throw new IllegalArgumentException("count must be <= max (unique constraint)");
 
+            List<Integer> list = new ArrayList<>();
+            for (int i = 1; i <= max; i++) list.add(i);
+            Collections.shuffle(list);
+
+            int[] res = new int[count];
+            for (int i = 0; i < count; i++) res[i] = list.get(i);
+            return res;
+        }
+    }
+
+    /* =======================
+     * CORS & Helpers
+     * ======================= */
     private static boolean handleCors(HttpExchange ex) throws IOException {
-        // Allow React dev server (or any origin for now)
         ex.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
         ex.getResponseHeaders().add("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
         ex.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
@@ -132,8 +183,7 @@ public class ApiServer {
     }
 
     private static String readAll(InputStream is) throws IOException {
-        byte[] buf = is.readAllBytes();
-        return new String(buf, StandardCharsets.UTF_8);
+        return new String(is.readAllBytes(), StandardCharsets.UTF_8);
     }
 
     private static Map<String, String> parseQuery(String rawQuery) {
@@ -143,45 +193,26 @@ public class ApiServer {
         for (String pair : rawQuery.split("&")) {
             int eq = pair.indexOf('=');
             if (eq < 0) continue;
-            String k = urlDecode(pair.substring(0, eq));
-            String v = urlDecode(pair.substring(eq + 1));
-            map.put(k, v);
+            map.put(
+                URLDecoder.decode(pair.substring(0, eq), StandardCharsets.UTF_8),
+                URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8)
+            );
         }
         return map;
     }
 
-    private static String urlDecode(String s) {
-        return URLDecoder.decode(s, StandardCharsets.UTF_8);
-    }
-
-    /**
-     * Accept either:
-     *  - JSON array: [5,1,4,2]
-     *  - CSV: 5,1,4,2
-     */
     private static int[] parseArray(String body) {
-        if (body == null || body.isEmpty()) throw new IllegalArgumentException();
-
         String s = body.trim();
         if (s.startsWith("[")) {
-            // very small JSON array parser (integers only)
-            if (!s.endsWith("]")) throw new IllegalArgumentException();
             s = s.substring(1, s.length() - 1).trim();
             if (s.isEmpty()) return new int[0];
-            String[] parts = s.split(",");
-            int[] a = new int[parts.length];
-            for (int i = 0; i < parts.length; i++) {
-                a[i] = Integer.parseInt(parts[i].trim());
-            }
-            return a;
+            return Arrays.stream(s.split(","))
+                    .mapToInt(v -> Integer.parseInt(v.trim()))
+                    .toArray();
         } else {
-            // CSV
-            String[] parts = s.split(",");
-            int[] a = new int[parts.length];
-            for (int i = 0; i < parts.length; i++) {
-                a[i] = Integer.parseInt(parts[i].trim());
-            }
-            return a;
+            return Arrays.stream(s.split(","))
+                    .mapToInt(v -> Integer.parseInt(v.trim()))
+                    .toArray();
         }
     }
 
@@ -193,16 +224,14 @@ public class ApiServer {
         sb.append("\"initial\":").append(intArrayJson(initial)).append(",");
         sb.append("\"sorted\":").append(intArrayJson(sorted)).append(",");
         sb.append("\"steps\":[");
-        for (int k = 0; k < steps.size(); k++) {
-            if (k > 0) sb.append(",");
-            SortEvent e = steps.get(k);
+        for (int i = 0; i < steps.size(); i++) {
+            if (i > 0) sb.append(",");
+            SortEvent e = steps.get(i);
             sb.append("{\"type\":\"").append(e.type).append("\"");
-
             if (e.i != null) sb.append(",\"i\":").append(e.i);
             if (e.j != null) sb.append(",\"j\":").append(e.j);
             if (e.index != null) sb.append(",\"index\":").append(e.index);
             if (e.value != null) sb.append(",\"value\":").append(e.value);
-
             sb.append("}");
         }
         sb.append("]}");
@@ -210,14 +239,7 @@ public class ApiServer {
     }
 
     private static String intArrayJson(int[] a) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[");
-        for (int i = 0; i < a.length; i++) {
-            if (i > 0) sb.append(",");
-            sb.append(a[i]);
-        }
-        sb.append("]");
-        return sb.toString();
+        return Arrays.toString(a);
     }
 
     private static String escape(String s) {
