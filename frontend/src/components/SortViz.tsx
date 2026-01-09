@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchAlgorithms, runSort } from "../api/client";
+import { fetchAlgorithms, generateArray, runSort } from "../api/client";
 import type { AlgoInfo, RunResponse, Step } from "../api/client";
 
 /* =====================
@@ -16,6 +16,11 @@ function applyStep(arr: number[], step: Step): number[] {
   }
   return a;
 }
+
+type Highlight =
+  | { type: "COMPARE" | "SWAP"; i: number; j: number }
+  | { type: "SET"; index: number }
+  | null;
 
 /* =====================
  * Component
@@ -58,7 +63,11 @@ export default function SortViz() {
 
   const [input, setInput] = useState("5,1,4,2,8");
   const parsed = useMemo(() => {
-    const parts = input.split(",").map((s) => Number(s.trim()));
+    const parts = input
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => Number(s));
     if (parts.some((n) => !Number.isFinite(n))) return null;
     return parts.map((n) => Math.trunc(n));
   }, [input]);
@@ -66,20 +75,57 @@ export default function SortViz() {
   const [run, setRun] = useState<RunResponse | null>(null);
   const [cursor, setCursor] = useState(0);
   const [array, setArray] = useState<number[]>([5, 1, 4, 2, 8]);
-  const [highlight, setHighlight] = useState<{
-    i: number;
-    j: number;
-    type: "COMPARE" | "SWAP";
-  } | null>(null);
+  const [highlight, setHighlight] = useState<Highlight>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
 
   /* ---------- Random generator UI ---------- */
-  // ★ number ではなく string で持つ
   const [genCount, setGenCount] = useState("5");
   const [genMax, setGenMax] = useState("10");
 
+  /* ---------- API status ---------- */
+  async function checkApiStatus() {
+    try {
+      await fetchAlgorithms();
+      setApiOnline(true);
+    } catch {
+      setApiOnline(false);
+    }
+  }
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const list = await fetchAlgorithms();
+        setAlgos(list);
+
+        // いまのalgoKeyが一覧に存在しない場合だけ先頭へ
+        if (list.length > 0 && !list.some((a) => a.key === algoKey)) {
+          setAlgoKey(list[0].key);
+        }
+
+        setApiOnline(true);
+      } catch (e) {
+        setError(String(e));
+        setApiOnline(false);
+      }
+    };
+
+    load();
+    const timer = setInterval(checkApiStatus, 3000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ★アルゴリズム切り替え時：再生状態をリセット
+  useEffect(() => {
+    setRun(null);
+    setCursor(0);
+    setHighlight(null);
+  }, [algoKey]);
+
+  /* ---------- Random Generate ---------- */
   async function onGenerate() {
     setError(null);
 
@@ -100,12 +146,7 @@ export default function SortViz() {
     }
 
     try {
-      const res = await fetch(
-        `http://localhost:7070/generate?count=${count}&max=${max}`
-      );
-      if (!res.ok) throw new Error(await res.text());
-
-      const nums: number[] = await res.json();
+      const nums = await generateArray(count, max);
       setInput(nums.join(","));
       setArray(nums);
       setRun(null);
@@ -115,34 +156,6 @@ export default function SortViz() {
       setError(String(e));
     }
   }
-
-  /* ---------- API status ---------- */
-  async function checkApiStatus() {
-    try {
-      await fetchAlgorithms();
-      setApiOnline(true);
-    } catch {
-      setApiOnline(false);
-    }
-  }
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const list = await fetchAlgorithms();
-        setAlgos(list);
-        if (list.length > 0) setAlgoKey(list[0].key);
-        setApiOnline(true);
-      } catch (e) {
-        setError(String(e));
-        setApiOnline(false);
-      }
-    };
-    load();
-
-    const timer = setInterval(checkApiStatus, 3000);
-    return () => clearInterval(timer);
-  }, []);
 
   /* ---------- Run / Step ---------- */
   async function onRun() {
@@ -166,16 +179,23 @@ export default function SortViz() {
     if (!run || cursor >= run.steps.length) return;
 
     const step = run.steps[cursor];
+
+    // highlight
     if (step.type === "COMPARE" || step.type === "SWAP") {
       setHighlight({ i: step.i, j: step.j, type: step.type });
+    } else if (step.type === "SET") {
+      setHighlight({ type: "SET", index: step.index });
     } else {
       setHighlight(null);
     }
 
+    // apply (DONE は配列を変えない)
     if (step.type !== "DONE") {
       setArray((prev) => applyStep(prev, step));
-      setCursor((c) => c + 1);
     }
+
+    // ★重要：DONEでも cursor を進める（DONEで止まるのを防ぐ）
+    setCursor((c) => c + 1);
   }
 
   /* ---------- Drawing ---------- */
@@ -190,6 +210,8 @@ export default function SortViz() {
       ? "#ffb020"
       : highlight?.type === "COMPARE"
       ? "#4aa3ff"
+      : highlight?.type === "SET"
+      ? "#b38bff"
       : "#666";
 
   /* =====================
@@ -219,7 +241,7 @@ export default function SortViz() {
           <select value={algoKey} onChange={(e) => setAlgoKey(e.target.value)}>
             {algos.map((a) => (
               <option key={a.key} value={a.key}>
-                {a.name}
+                {a.name} ({a.key})
               </option>
             ))}
           </select>
@@ -249,11 +271,7 @@ export default function SortViz() {
             type="text"
             inputMode="numeric"
             value={genCount}
-            onChange={(e) =>
-              setGenCount(
-                e.target.value.replace(/\D/g, "").replace(/^0+/, "")
-              )
-            }
+            onChange={(e) => setGenCount(e.target.value.replace(/\D/g, "").replace(/^0+/, ""))}
           />
         </label>
 
@@ -263,17 +281,17 @@ export default function SortViz() {
             type="text"
             inputMode="numeric"
             value={genMax}
-            onChange={(e) =>
-              setGenMax(
-                e.target.value.replace(/\D/g, "").replace(/^0+/, "")
-              )
-            }
+            onChange={(e) => setGenMax(e.target.value.replace(/\D/g, "").replace(/^0+/, ""))}
           />
         </label>
 
         <button onClick={onGenerate}>Generate</button>
-        <button onClick={onRun} disabled={!parsed}>Run</button>
-        <button onClick={stepOnce} disabled={!run}>Step</button>
+        <button onClick={onRun} disabled={!parsed}>
+          Run
+        </button>
+        <button onClick={stepOnce} disabled={!run || cursor >= (run?.steps.length ?? 0)}>
+          Step
+        </button>
       </div>
 
       {/* Info */}
@@ -283,10 +301,18 @@ export default function SortViz() {
           <div style={{ marginTop: 4 }}>
             <b>Highlight:</b>{" "}
             {highlight ? (
-              <span style={{ background: highlightColor, padding: "2px 8px", borderRadius: 999 }}>
-                {highlight.type} ({highlight.i}, {highlight.j})
-              </span>
-            ) : "-"}
+              highlight.type === "SET" ? (
+                <span style={{ background: highlightColor, padding: "2px 8px", borderRadius: 999 }}>
+                  SET ({highlight.index})
+                </span>
+              ) : (
+                <span style={{ background: highlightColor, padding: "2px 8px", borderRadius: 999 }}>
+                  {highlight.type} ({highlight.i}, {highlight.j})
+                </span>
+              )
+            ) : (
+              "-"
+            )}
           </div>
         </div>
       )}
@@ -299,7 +325,10 @@ export default function SortViz() {
           const h = (v / maxVal) * (height - padding * 2);
           const x = padding + i * barW;
           const y = height - padding - h;
-          const isHi = highlight && (i === highlight.i || i === highlight.j);
+
+          const isHi =
+            (highlight?.type === "SET" && i === highlight.index) ||
+            ((highlight?.type === "COMPARE" || highlight?.type === "SWAP") && (i === highlight.i || i === highlight.j));
 
           return (
             <g key={i}>
