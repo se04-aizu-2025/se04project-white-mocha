@@ -4,6 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import algorithm.BubbleSort;
+import algorithm.InsertionSort;
+import algorithm.MergeSort;
 import algorithm.SelectionSort;
 import algorithm.SortAlgorithm;
 
@@ -21,6 +23,8 @@ public class AlgorithmRegistry {
     private void registerDefaults() {
         register("bubble", new BubbleSort());
         register("selection", new SelectionSort());
+        register("insertion", new InsertionSort());
+        register("merge", new MergeSort());
     }
 
     public void register(String key, SortAlgorithm algo) {

@@ -11,8 +11,8 @@ public class StepDebugMain {
 
         AlgorithmRegistry reg = new AlgorithmRegistry();
 
-        // "bubble" または "selection" を試す
-        SortAlgorithm algo = reg.get("selection");
+        // 各ソートのテスト keyを変更する。
+        SortAlgorithm algo = reg.get("merge");
         if (algo == null) {
             System.out.println("Algorithm not found. (check AlgorithmRegistry keys)");
             return;
