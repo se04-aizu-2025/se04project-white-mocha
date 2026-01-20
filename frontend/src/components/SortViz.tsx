@@ -26,37 +26,6 @@ type Highlight =
  * Component
  * ===================== */
 export default function SortViz() {
-  /* ---------- CSV parser ---------- */
-  function parseNumbersFromCsvText(text: string): number[] {
-    const tokens = text
-      .replace(/\r/g, "")
-      .split(/[,;\n\t ]+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
-    const nums = tokens.map(Number);
-    if (nums.some((n) => !Number.isFinite(n))) {
-      throw new Error("CSV contains non-numeric values");
-    }
-    return nums.map((n) => Math.trunc(n));
-  }
-
-  async function onPickCsvFile(file: File) {
-    setError(null);
-    try {
-      const text = await file.text();
-      const nums = parseNumbersFromCsvText(text);
-
-      setInput(nums.join(","));
-      setArray(nums);
-      setRun(null);
-      setCursor(0);
-      setHighlight(null);
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   /* ---------- State ---------- */
   const [algos, setAlgos] = useState<AlgoInfo[]>([]);
   const [algoKey, setAlgoKey] = useState("bubble");
@@ -250,11 +219,6 @@ export default function SortViz() {
         <label>
           Array (CSV):
           <input value={input} onChange={(e) => setInput(e.target.value)} style={{ width: 240 }} />
-        </label>
-
-        <label>
-          CSV File:
-          <input type="file" accept=".csv" onChange={(e) => e.target.files && onPickCsvFile(e.target.files[0])} />
         </label>
 
         {/* Random Array Generator description */}
