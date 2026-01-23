@@ -46,7 +46,7 @@ React（Vite）製のフロントエンドで **ステップ単位の挙動を�
   - Merge Sort
 - 比較・交換・代入（SET）をイベントとして取得
 - Step 実行による逐次可視化
-- CSV 入力 / ランダム配列生成に対応
+- ランダム配列生成に対応
 - アルゴリズム追加が容易な設計（Strategy + Observer）
 
 <p align="right">(<a href="#top">トップへ</a>)</p>
