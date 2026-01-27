@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { fetchAlgorithms, generateArray, runSort } from "../api/client";
 import type { AlgoInfo, RunResponse, Step } from "../api/client";
 
@@ -49,6 +49,12 @@ export default function SortViz() {
   const [error, setError] = useState<string | null>(null);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
 
+    /* ---------- Auto Play ---------- */
+  const [isAuto, setIsAuto] = useState(false);
+  const [speedMs, setSpeedMs] = useState(300); // 速度(ms)
+  const timerRef = useRef<number | null>(null);
+
+
   /* ---------- Random generator UI ---------- */
   const [genCount, setGenCount] = useState("5");
   const [genMax, setGenMax] = useState("10");
@@ -89,6 +95,7 @@ export default function SortViz() {
 
   // ★アルゴリズム切り替え時：再生状態をリセット
   useEffect(() => {
+    setIsAuto(false);
     setRun(null);
     setCursor(0);
     setHighlight(null);
@@ -121,6 +128,7 @@ export default function SortViz() {
       setRun(null);
       setCursor(0);
       setHighlight(null);
+      setIsAuto(false);
     } catch (e) {
       setError(String(e));
     }
@@ -139,6 +147,7 @@ export default function SortViz() {
       setCursor(0);
       setArray(res.initial);
       setHighlight(null);
+      setIsAuto(false); 
     } catch (e) {
       setError(String(e));
     }
@@ -166,6 +175,43 @@ export default function SortViz() {
     // ★重要：DONEでも cursor を進める（DONEで止まるのを防ぐ）
     setCursor((c) => c + 1);
   }
+
+    /* ---------- Auto Play Effect ---------- */
+  useEffect(() => {
+    // Auto OFF ならタイマー停止
+    if (!isAuto) {
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
+
+    // 走る前に条件チェック（runがない / 終了してる）
+    if (!run || cursor >= run.steps.length) {
+      setIsAuto(false);
+      return;
+    }
+
+    // Auto ON → stepOnce を一定間隔で呼ぶ
+    timerRef.current = window.setInterval(() => {
+      // DONE まで行ったら停止
+      if (!run || cursor >= run.steps.length) {
+        setIsAuto(false);
+        return;
+      }
+      stepOnce();
+    }, speedMs);
+
+    // クリーンアップ
+    return () => {
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isAuto, speedMs, run, cursor]);
+
 
   /* ---------- Drawing ---------- */
   const width = 720;
@@ -250,12 +296,38 @@ export default function SortViz() {
         </label>
 
         <button onClick={onGenerate}>Generate</button>
+
         <button onClick={onRun} disabled={!parsed}>
           Run
         </button>
-        <button onClick={stepOnce} disabled={!run || cursor >= (run?.steps.length ?? 0)}>
+
+        <button onClick={stepOnce} disabled={!run || cursor >= (run?.steps.length ?? 0) || isAuto}>
           Step
         </button>
+
+        {/* Auto Play Button */}
+        <button
+          onClick={() => setIsAuto((v) => !v)}
+          disabled={!run || cursor >= (run?.steps.length ?? 0)}
+        >
+          {isAuto ? "Pause" : "Auto"}
+        </button>
+
+        {/* Speed Controller */}
+        <label style={{ fontSize: 12, color: "#aaa" }}>
+          Speed:
+          <input
+            type="range"
+            min={50}
+            max={1000}
+            step={50}
+            value={speedMs}
+            onChange={(e) => setSpeedMs(Number(e.target.value))}
+            style={{ verticalAlign: "middle", marginLeft: 6, marginRight: 6 }}
+          />
+          {speedMs} ms
+        </label>
+
       </div>
 
       {/* Info */}
