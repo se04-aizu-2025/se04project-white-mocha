@@ -318,17 +318,39 @@ export default function SortViz() {
           Speed:
           <input
             type="range"
-            min={50}
+            min={10}
             max={1000}
-            step={50}
-            value={speedMs}
-            onChange={(e) => setSpeedMs(Number(e.target.value))}
+            step={10}
+            value={1000 - speedMs + 10}  // ← 表示値を反転
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setSpeedMs(1000 - v + 10); // ← 右に行くほど速くなる
+            }}
             style={{ verticalAlign: "middle", marginLeft: 6, marginRight: 6 }}
           />
           {speedMs} ms
         </label>
 
+
       </div>
+
+            {run && cursor >= run.steps.length && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "6px 12px",
+            borderRadius: 8,
+            background: "#2ecc71",
+            color: "#000",
+            fontWeight: "bold",
+            display: "inline-block",
+          }}
+        >
+          ✔ Finished
+        </div>
+      )}
+
+
 
       {/* Info */}
       {run && (
